@@ -364,6 +364,29 @@ func Test_ProjectsList_ListProjectItems(t *testing.T) {
 		require.True(t, ok)
 		assertMinimalPullRequestProjectItem(t, textContent.Text, item)
 	})
+
+	t.Run("rejects fields and field_names together", func(t *testing.T) {
+		mockedClient := MockHTTPClientWithHandlers(map[string]http.HandlerFunc{})
+		client := mustNewGHClient(t, mockedClient)
+		deps := BaseDeps{
+			Client: client,
+		}
+		handler := toolDef.Handler(deps)
+		request := createMCPRequest(map[string]any{
+			"method":         "list_project_items",
+			"owner":          "octo-org",
+			"owner_type":     "org",
+			"project_number": float64(1),
+			"fields":         []any{"100"},
+			"field_names":    []any{"Status"},
+		})
+		result, err := handler(ContextWithDeps(context.Background(), deps), &request)
+
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		textContent := getTextResult(t, result)
+		assert.Contains(t, textContent.Text, "provide either 'fields' or 'field_names', not both")
+	})
 }
 
 func Test_detectOwnerType(t *testing.T) {
@@ -811,6 +834,30 @@ func Test_ProjectsGet_GetProjectItem(t *testing.T) {
 		textContent := getTextResult(t, result)
 		assert.Contains(t, textContent.Text, "missing required parameter: item_id")
 	})
+
+	t.Run("rejects fields and field_names together", func(t *testing.T) {
+		mockedClient := MockHTTPClientWithHandlers(map[string]http.HandlerFunc{})
+		client := mustNewGHClient(t, mockedClient)
+		deps := BaseDeps{
+			Client: client,
+		}
+		handler := toolDef.Handler(deps)
+		request := createMCPRequest(map[string]any{
+			"method":         "get_project_item",
+			"owner":          "octo-org",
+			"owner_type":     "org",
+			"project_number": float64(1),
+			"item_id":        float64(1001),
+			"fields":         []any{"100"},
+			"field_names":    []any{"Status"},
+		})
+		result, err := handler(ContextWithDeps(context.Background(), deps), &request)
+
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		textContent := getTextResult(t, result)
+		assert.Contains(t, textContent.Text, "provide either 'fields' or 'field_names', not both")
+	})
 }
 
 func Test_ProjectsWrite(t *testing.T) {
@@ -819,7 +866,7 @@ func Test_ProjectsWrite(t *testing.T) {
 	require.NoError(t, toolsnaps.Test(toolDef.Tool.Name, toolDef.Tool))
 
 	assert.Equal(t, "projects_write", toolDef.Tool.Name)
-	assert.NotEmpty(t, toolDef.Tool.Description)
+	assert.Contains(t, toolDef.Tool.Description, "bulk-update many items at once")
 	inputSchema := toolDef.Tool.InputSchema.(*jsonschema.Schema)
 	assert.Contains(t, inputSchema.Properties, "method")
 	assert.Contains(t, inputSchema.Properties, "owner")
@@ -832,12 +879,71 @@ func Test_ProjectsWrite(t *testing.T) {
 	assert.Contains(t, inputSchema.Properties, "issue_number")
 	assert.Contains(t, inputSchema.Properties, "pull_request_number")
 	assert.Contains(t, inputSchema.Properties, "updated_field")
+	assert.Contains(t, inputSchema.Properties, "items")
 	assert.ElementsMatch(t, inputSchema.Required, []string{"method", "owner"})
 
 	// Verify DestructiveHint is set
 	assert.NotNil(t, toolDef.Tool.Annotations)
 	assert.NotNil(t, toolDef.Tool.Annotations.DestructiveHint)
 	assert.True(t, *toolDef.Tool.Annotations.DestructiveHint)
+}
+
+func Test_ProjectsWrite_UpdateProjectItemsSchema(t *testing.T) {
+	inputSchema := ProjectsWrite(translations.NullTranslationHelper).Tool.InputSchema.(*jsonschema.Schema)
+	assert.Contains(t, inputSchema.Properties["items"].Description, "prefer it over calling 'update_project_item' in a loop")
+	itemSchema := inputSchema.Properties["items"].Items
+
+	assert.Equal(t, "object", itemSchema.Type)
+	assert.Empty(t, itemSchema.Properties, "item references should be modeled by oneOf, not flattened properties")
+	require.Len(t, itemSchema.OneOf, 3)
+
+	expectedRequired := [][]string{
+		{"node_id"},
+		{"item_id"},
+		{"item_owner", "item_repo", "issue_number"},
+	}
+	expectedProperties := [][]string{
+		{"node_id"},
+		{"item_id"},
+		{"item_owner", "item_repo", "issue_number"},
+	}
+	for i, variant := range itemSchema.OneOf {
+		properties := make([]string, 0, len(variant.Properties))
+		for name := range variant.Properties {
+			properties = append(properties, name)
+		}
+		assert.Equal(t, "object", variant.Type)
+		assert.ElementsMatch(t, expectedRequired[i], variant.Required)
+		assert.ElementsMatch(t, expectedProperties[i], properties)
+		for _, property := range variant.Properties {
+			assert.NotEmpty(t, property.Type)
+			assert.NotEmpty(t, property.Description)
+		}
+		require.NotNil(t, variant.AdditionalProperties)
+		assert.NotNil(t, variant.AdditionalProperties.Not, "variant must reject additional properties")
+	}
+
+	fieldSchema := inputSchema.Properties["updated_field"]
+	assert.Equal(t, "object", fieldSchema.Type)
+	assert.Contains(t, fieldSchema.Description, "one top-level field/value applies to every item")
+	require.Len(t, fieldSchema.OneOf, 2)
+	for i, variant := range fieldSchema.OneOf {
+		reference := "id"
+		if i == 1 {
+			reference = "name"
+		}
+		properties := make([]string, 0, len(variant.Properties))
+		for name := range variant.Properties {
+			properties = append(properties, name)
+		}
+		assert.ElementsMatch(t, []string{reference, "value"}, variant.Required)
+		assert.ElementsMatch(t, []string{reference, "value"}, properties)
+		require.NotNil(t, variant.AdditionalProperties)
+		assert.NotNil(t, variant.AdditionalProperties.Not)
+		assert.Empty(t, variant.Properties["value"].Type, "an unconstrained value schema accepts any JSON value, including null")
+		assert.Empty(t, variant.Properties["value"].Types)
+		assert.NotEmpty(t, variant.Properties["value"].Description)
+	}
 }
 
 func Test_ProjectsWrite_AddProjectItem(t *testing.T) {

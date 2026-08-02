@@ -13,7 +13,7 @@ import (
 	"github.com/github/github-mcp-server/pkg/scopes"
 	"github.com/github/github-mcp-server/pkg/translations"
 	"github.com/github/github-mcp-server/pkg/utils"
-	"github.com/google/go-github/v87/github"
+	"github.com/google/go-github/v89/github"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -212,6 +212,10 @@ func SearchCode(t translations.TranslationHelperFunc) inventory.ServerTool {
 		},
 		Required: []string{"query"},
 	}
+	schema.Properties["fields"] = fieldsSchemaProperty(
+		"Subset of fields to return for each code search result. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'repository' and 'text_matches' in particular drops the largest per-result data.",
+		codeSearchItemFieldEnum,
+	)
 	WithPagination(schema)
 
 	return NewTool(
@@ -236,6 +240,10 @@ func SearchCode(t translations.TranslationHelperFunc) inventory.ServerTool {
 				return utils.NewToolResultError(err.Error()), nil, nil
 			}
 			order, err := OptionalParam[string](args, "order")
+			if err != nil {
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+			fields, err := OptionalStringArrayParam(args, "fields")
 			if err != nil {
 				return utils.NewToolResultError(err.Error()), nil, nil
 			}
@@ -297,10 +305,27 @@ func SearchCode(t translations.TranslationHelperFunc) inventory.ServerTool {
 				Items:             minimalItems,
 			}
 
-			r, err := json.Marshal(minimalResult)
+			filtered := false
+			var payload any = minimalResult
+			if len(fields) > 0 {
+				filteredItems, err := filterEachField(minimalItems, fields)
+				if err != nil {
+					return utils.NewToolResultErrorFromErr("failed to filter code search results", err), nil, nil
+				}
+				payload = map[string]any{
+					"total_count":        minimalResult.TotalCount,
+					"incomplete_results": minimalResult.IncompleteResults,
+					"items":              filteredItems,
+				}
+				filtered = true
+			}
+
+			r, err := json.Marshal(payload)
 			if err != nil {
 				return utils.NewToolResultErrorFromErr("failed to marshal response", err), nil, nil
 			}
+
+			recordSearchCodeFieldsUsage(ctx, deps, minimalResult, filtered, len(r))
 
 			callResult := utils.NewToolResultText(string(r))
 			// Code search spans repositories; the IFC label is the conservative
@@ -316,6 +341,12 @@ func SearchCode(t translations.TranslationHelperFunc) inventory.ServerTool {
 			return callResult, nil, nil
 		},
 	)
+}
+
+// recordSearchCodeFieldsUsage emits fields telemetry for a search_code call.
+// sentBytes is the size of the payload actually returned.
+func recordSearchCodeFieldsUsage(ctx context.Context, deps ToolDependencies, full *MinimalCodeSearchResult, filtered bool, sentBytes int) {
+	recordFieldsUsageFor(ctx, deps, "search_code", full, filtered, sentBytes)
 }
 
 func userOrOrgHandler(ctx context.Context, accountType string, deps ToolDependencies, args map[string]any) (*mcp.CallToolResult, any, error) {
