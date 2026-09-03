@@ -5,6 +5,10 @@ import "slices"
 // MCPAppsFeatureFlag is the feature flag name for MCP Apps (interactive UI forms).
 const MCPAppsFeatureFlag = "remote_mcp_ui_apps"
 
+// MCPAppsDisableFormDeferralFeatureFlag disables handing write-tool calls off
+// to MCP App forms while preserving MCP Apps UI metadata and result views.
+const MCPAppsDisableFormDeferralFeatureFlag = "mcp_apps_disable_form_deferral"
+
 // FeatureFlagCSVOutput is the feature flag name for CSV output on list tools.
 const FeatureFlagCSVOutput = "csv_output"
 
@@ -16,17 +20,26 @@ const FeatureFlagIFCLabels = "ifc_labels"
 // is not advertised by default, keeping the tool surface small unless opted in.
 const FeatureFlagFileBlame = "file_blame"
 
+// FeatureFlagIssueDependencies is the feature flag name for the issue dependency
+// tools (issue_dependency_read / issue_dependency_write), which read and edit an
+// issue's blocked-by / blocking relationships. It is gated so these tools are not
+// advertised in the default surface, keeping the fixed tool-schema cost small
+// unless explicitly opted in.
+const FeatureFlagIssueDependencies = "issue_dependencies"
+
 // AllowedFeatureFlags is the allowlist of feature flags that can be enabled
 // by users via --features CLI flag or X-MCP-Features HTTP header.
 // Only flags in this list are accepted; unknown flags are silently ignored.
 // This is the single source of truth for which flags are user-controllable.
 var AllowedFeatureFlags = []string{
 	MCPAppsFeatureFlag,
+	MCPAppsDisableFormDeferralFeatureFlag,
 	FeatureFlagCSVOutput,
 	FeatureFlagIFCLabels,
 	FeatureFlagIssuesGranular,
 	FeatureFlagPullRequestsGranular,
 	FeatureFlagFileBlame,
+	FeatureFlagIssueDependencies,
 }
 
 // InsidersFeatureFlags is the list of feature flags that insiders mode enables.
@@ -37,6 +50,7 @@ var InsidersFeatureFlags = []string{
 	MCPAppsFeatureFlag,
 	FeatureFlagCSVOutput,
 	FeatureFlagFileBlame,
+	FeatureFlagIssueDependencies,
 }
 
 // FeatureFlags defines runtime feature toggles that adjust tool behavior.
