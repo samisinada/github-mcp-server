@@ -12,5 +12,8 @@ func AllPrompts(t translations.TranslationHelperFunc) []inventory.ServerPrompt {
 		// Issue prompts
 		AssignCodingAgentPrompt(t),
 		IssueToFixWorkflowPrompt(t),
+		FamilyMedicineClinicOpsPrompt(t),
+		FamilyMedicineQIProtocolPrompt(t),
+		FamilyMedicineCredentialWatchPrompt(t),
 	}
 }
