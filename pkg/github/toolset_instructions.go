@@ -12,7 +12,9 @@ func generateContextToolsetInstructions(_ *inventory.Inventory) string {
 func generateIssuesToolsetInstructions(_ *inventory.Inventory) string {
 	return `## Issues
 
-Check 'list_issue_types' first for organizations to use proper issue types. Use 'search_issues' before creating new issues to avoid duplicates. Always set 'state_reason' when closing issues.`
+Check 'list_issue_types' first for organizations to use proper issue types. Use 'search_issues' before creating new issues to avoid duplicates. Always set 'state_reason' when closing issues.
+
+Family-medicine clinic work uses prompts family_medicine_clinic_ops, family_medicine_qi_protocol, and family_medicine_credential_watch. Never put patient identifiers in issues or pull requests.`
 }
 
 func generatePullRequestsToolsetInstructions(inv *inventory.Inventory) string {
